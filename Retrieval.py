@@ -225,7 +225,7 @@ def main(args, config):
     lr_scheduler, _ = create_scheduler(arg_sche, optimizer)
 
     if args.checkpoint:
-        checkpoint = torch.load(args.checkpoint, map_location='cpu')
+        checkpoint = torch.load(args.checkpoint, map_location='cpu', weights_only=False)
         state_dict = checkpoint['model']
         if args.resume:
             optimizer.load_state_dict(checkpoint['optimizer'])
