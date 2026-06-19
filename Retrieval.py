@@ -5,7 +5,7 @@ import os
 import random
 import time
 import numpy as np
-import ruamel_yaml as yaml
+from ruamel.yaml import YAML
 import torch
 import torch.backends.cudnn as cudnn
 import torch.distributed as dist
@@ -319,7 +319,10 @@ if __name__ == '__main__':
     parser.add_argument('--dist_url', default='env://', help='url used to set up distributed training')
     parser.add_argument('--distributed', default=True, type=bool)
     args = parser.parse_args()
-    config = yaml.load(open(args.config, 'r'), Loader=yaml.Loader)
+    yaml_loader = YAML(typ='rt')
+    with open(args.config, 'r') as f:
+        config = yaml_loader.load(f)
     Path(args.output_dir).mkdir(parents=True, exist_ok=True)
-    yaml.dump(config, open(os.path.join(args.output_dir, 'config.yaml'), 'w'))
+    with open(os.path.join(args.output_dir, 'config.yaml'), 'w') as f:
+        yaml_loader.dump(config, f)
     main(args, config)

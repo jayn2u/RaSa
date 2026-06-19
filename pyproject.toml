@@ -12,6 +12,7 @@ dependencies = [
     "numpy",
     "pillow",
     "ruamel.yaml",
+    "protobuf",
 ]
 
 [[tool.uv.index]]
