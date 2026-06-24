@@ -1,9 +1,9 @@
-train_file:  ['../dataset/RSTPReid/processed_data/train.json']
-val_file: '../dataset/RSTPReid/processed_data/val.json'
-test_file: '../dataset/RSTPReid/processed_data/test.json'
-train_image_root: '../dataset/RSTPReid/imgs'
-val_image_root: '../dataset/RSTPReid/imgs'
-test_image_root: '../dataset/RSTPReid/imgs'
+train_file:  ['/mnt/data/lab_datasets/RSTPReid/processed_data/train.json']
+val_file: '/mnt/data/lab_datasets/RSTPReid/processed_data/val.json'
+test_file: '/mnt/data/lab_datasets/RSTPReid/processed_data/test.json'
+train_image_root: '/mnt/data/lab_datasets/RSTPReid/imgs'
+val_image_root: '/mnt/data/lab_datasets/RSTPReid/imgs'
+test_image_root: '/mnt/data/lab_datasets/RSTPReid/imgs'
 
 bert_config: 'configs/config_bert.json'
 

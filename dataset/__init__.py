@@ -4,6 +4,26 @@ from torchvision import transforms
 from torchvision.transforms import InterpolationMode
 from dataset.ps_dataset import ps_train_dataset, ps_eval_dataset
 
+def create_eval_dataset(config):
+    normalize = transforms.Normalize((0.48145466, 0.4578275, 0.40821073), (0.26862954, 0.26130258, 0.27577711))
+    test_transform = transforms.Compose([
+        transforms.Resize((config['image_res'], config['image_res']), interpolation=InterpolationMode.BICUBIC),
+        transforms.ToTensor(),
+        normalize,
+    ])
+    return ps_eval_dataset(config['test_file'], test_transform, config['test_image_root'], config['max_words'])
+
+
+def create_eval_loader(test_dataset, batch_size, num_workers=0):
+    return DataLoader(
+        test_dataset,
+        batch_size=batch_size,
+        num_workers=num_workers,
+        pin_memory=False,
+        shuffle=False,
+        drop_last=False,
+    )
+
 def create_dataset(dataset, config):
     normalize = transforms.Normalize((0.48145466, 0.4578275, 0.40821073), (0.26862954, 0.26130258, 0.27577711))
     train_transform = transforms.Compose([

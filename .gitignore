@@ -140,5 +140,13 @@ cython_debug/
 
 # IDEA
 .idea/
+.vscode/
+.DS_Store
+
+output/
+results/
+logs/
+wandb/
+.ruff_cache/
 
 *.pth

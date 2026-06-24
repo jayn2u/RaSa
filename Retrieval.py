@@ -13,7 +13,7 @@ import torch.nn.functional as F
 from pathlib import Path
 
 import utils
-from dataset import create_dataset, create_sampler, create_loader
+from dataset import create_dataset, create_sampler, create_loader, create_eval_dataset, create_eval_loader
 from models.model_person_search import ALBEF
 from models.tokenization_bert import BertTokenizer
 from models.vit import interpolate_pos_embed
@@ -69,14 +69,13 @@ def train(model, data_loader, optimizer, tokenizer, epoch, warmup_steps, device,
 
 @torch.no_grad()
 def evaluation(model, data_loader, tokenizer, device, config):
-    # evaluate
     model.eval()
     metric_logger = utils.MetricLogger(delimiter="  ")
     header = 'Evaluation:'
     print('Computing features for evaluation...')
     start_time = time.time()
-    # extract text features
-    texts = data_loader.dataset.text
+    eval_dataset = data_loader.dataset
+    texts = eval_dataset.text
     num_text = len(texts)
     text_bs = 256
     text_feats = []
@@ -88,48 +87,52 @@ def evaluation(model, data_loader, tokenizer, device, config):
         text_output = model.text_encoder.bert(text_input.input_ids, attention_mask=text_input.attention_mask, mode='text')
         text_feat = text_output.last_hidden_state
         text_embed = F.normalize(model.text_proj(text_feat[:, 0, :]))
-        text_embeds.append(text_embed)
-        text_feats.append(text_feat)
-        text_atts.append(text_input.attention_mask)
+        text_embeds.append(text_embed.cpu())
+        text_feats.append(text_feat.cpu())
+        text_atts.append(text_input.attention_mask.cpu())
+        del text_output, text_input, text_feat, text_embed
     text_embeds = torch.cat(text_embeds, dim=0)
     text_feats = torch.cat(text_feats, dim=0)
     text_atts = torch.cat(text_atts, dim=0)
-    # extract image features
-    image_feats = []
     image_embeds = []
     for image, img_id in data_loader:
         image = image.to(device)
         image_feat = model.visual_encoder(image)
-        image_embed = model.vision_proj(image_feat[:, 0, :])
-        image_embed = F.normalize(image_embed, dim=-1)
-        image_feats.append(image_feat.cpu())
-        image_embeds.append(image_embed)
-    image_feats = torch.cat(image_feats, dim=0)
+        image_embed = F.normalize(model.vision_proj(image_feat[:, 0, :]), dim=-1)
+        image_embeds.append(image_embed.cpu())
+        del image, image_feat, image_embed
     image_embeds = torch.cat(image_embeds, dim=0)
-    # compute the feature similarity score for all image-text pairs
     sims_matrix = text_embeds @ image_embeds.t()
-    score_matrix_t2i = torch.full((len(texts), len(data_loader.dataset.image)), -100.0).to(device)
-    # take the top-k candidates and calculate their ITM score sitm for ranking
+    del text_embeds
+    score_matrix_t2i = torch.full((len(texts), len(eval_dataset.image)), -100.0)
     num_tasks = utils.get_world_size()
     rank = utils.get_rank()
     step = sims_matrix.size(0) // num_tasks + 1
     start = rank * step
     end = min(sims_matrix.size(0), start + step)
+    k_test = config['k_test']
     for i, sims in enumerate(metric_logger.log_every(sims_matrix[start:end], 50, header)):
-        topk_sim, topk_idx = sims.topk(k=config['k_test'], dim=0)
-        encoder_output = image_feats[topk_idx]
-        encoder_att = torch.ones(encoder_output.size()[:-1], dtype=torch.long).to(device)
-        output = model.text_encoder.bert(encoder_embeds=text_feats[start + i].repeat(config['k_test'], 1, 1),
-                                         attention_mask=text_atts[start + i].repeat(config['k_test'], 1),
-                                         encoder_hidden_states=encoder_output.to(device),
-                                         encoder_attention_mask=encoder_att,
-                                         return_dict=True,
-                                         mode='fusion'
-                                         )
-        score = model.itm_head(output.last_hidden_state[:, 0, :])[:, 1]
-        score_matrix_t2i[start + i, topk_idx] = score
+        topk_sim, topk_idx = sims.topk(k=k_test, dim=0)
+        topk_images = torch.stack([eval_dataset[int(idx)][0] for idx in topk_idx.tolist()]).to(device)
+        encoder_output = model.visual_encoder(topk_images)
+        text_idx = start + i
+        text_feat = text_feats[text_idx:text_idx + 1].to(device)
+        text_att = text_atts[text_idx:text_idx + 1].to(device)
+        encoder_att = torch.ones(encoder_output.size()[:-1], dtype=torch.long, device=device)
+        output = model.text_encoder.bert(
+            encoder_embeds=text_feat.repeat(k_test, 1, 1),
+            attention_mask=text_att.repeat(k_test, 1),
+            encoder_hidden_states=encoder_output,
+            encoder_attention_mask=encoder_att,
+            return_dict=True,
+            mode='fusion',
+        )
+        score = model.itm_head(output.last_hidden_state[:, 0, :])[:, 1].cpu()
+        score_matrix_t2i[text_idx, topk_idx] = score
+        del topk_images, encoder_output, output, score, text_feat, text_att
     if args.distributed:
         dist.barrier()
+        score_matrix_t2i = score_matrix_t2i.to(device)
         torch.distributed.all_reduce(score_matrix_t2i, op=torch.distributed.ReduceOp.SUM)
     total_time = time.time() - start_time
     total_time_str = str(datetime.timedelta(seconds=int(total_time)))
@@ -192,19 +195,28 @@ def main(args, config):
     cudnn.benchmark = True
     # Dataset
     print("Creating retrieval dataset")
-    train_dataset, val_dataset, test_dataset = create_dataset('ps', config)
-    if args.distributed:
-        num_tasks = utils.get_world_size()
-        global_rank = utils.get_rank()
-        samplers = create_sampler([train_dataset], [True], num_tasks, global_rank) + [None, None]
+    if args.evaluate:
+        test_dataset = create_eval_dataset(config)
+        test_loader = create_eval_loader(
+            test_dataset,
+            batch_size=config['batch_size_test'],
+            num_workers=0,
+        )
+        train_loader = val_loader = None
     else:
-        samplers = [None, None, None]
-    train_loader, val_loader, test_loader = create_loader([train_dataset, val_dataset, test_dataset], samplers,
-                                                          batch_size=[config['batch_size_train']] + [
-                                                              config['batch_size_test']] * 2,
-                                                          num_workers=[4, 4, 4],
-                                                          is_trains=[True, False, False],
-                                                          collate_fns=[None, None, None])
+        train_dataset, val_dataset, test_dataset = create_dataset('ps', config)
+        if args.distributed:
+            num_tasks = utils.get_world_size()
+            global_rank = utils.get_rank()
+            samplers = create_sampler([train_dataset], [True], num_tasks, global_rank) + [None, None]
+        else:
+            samplers = [None, None, None]
+        train_loader, val_loader, test_loader = create_loader([train_dataset, val_dataset, test_dataset], samplers,
+                                                              batch_size=[config['batch_size_train']] + [
+                                                                  config['batch_size_test']] * 2,
+                                                              num_workers=[4, 4, 4],
+                                                              is_trains=[True, False, False],
+                                                              collate_fns=[None, None, None])
     tokenizer = BertTokenizer.from_pretrained(args.text_encoder)
 
     start_epoch = 0
@@ -214,20 +226,23 @@ def main(args, config):
     best_epoch = 0
     best_log = ''
 
-    # Model
     print("Creating model")
     model = ALBEF(config=config, text_encoder=args.text_encoder, tokenizer=tokenizer)
     model = model.to(device)
-    # Optimizer and learning rate scheduler
-    arg_opt = utils.AttrDict(config['optimizer'])
-    optimizer = create_optimizer(arg_opt, model)
-    arg_sche = utils.AttrDict(config['schedular'])
-    lr_scheduler, _ = create_scheduler(arg_sche, optimizer)
+    optimizer = None
+    lr_scheduler = None
+    if not args.evaluate:
+        arg_opt = utils.AttrDict(config['optimizer'])
+        optimizer = create_optimizer(arg_opt, model)
+        arg_sche = utils.AttrDict(config['schedular'])
+        lr_scheduler, _ = create_scheduler(arg_sche, optimizer)
 
     if args.checkpoint:
         checkpoint = torch.load(args.checkpoint, map_location='cpu', weights_only=False)
         state_dict = checkpoint['model']
         if args.resume:
+            if optimizer is None or lr_scheduler is None:
+                raise RuntimeError("resume requires optimizer state")
             optimizer.load_state_dict(checkpoint['optimizer'])
             lr_scheduler.load_state_dict(checkpoint['lr_scheduler'])
             start_epoch = checkpoint['epoch'] + 1
@@ -306,7 +321,7 @@ def main(args, config):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--config', default='./configs/PS_cuhk_pedes.yaml')
+    parser.add_argument('--config', required=True)
     parser.add_argument('--output_dir', default='output/cuhk-pedes')
     parser.add_argument('--checkpoint', default='')
     parser.add_argument('--resume', action='store_true')

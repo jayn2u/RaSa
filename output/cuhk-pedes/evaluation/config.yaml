@@ -1,9 +1,9 @@
-train_file: [/data/jayn2u/lab_datasets/CUHK-PEDES/processed_data/train.json]
-val_file: /data/jayn2u/lab_datasets/CUHK-PEDES/processed_data/val.json
-test_file: /data/jayn2u/lab_datasets/CUHK-PEDES/processed_data/test.json
-train_image_root: /data/jayn2u/lab_datasets/CUHK-PEDES/imgs
-val_image_root: /data/jayn2u/lab_datasets/CUHK-PEDES/imgs
-test_image_root: /data/jayn2u/lab_datasets/CUHK-PEDES/imgs
+train_file: [/mnt/data/lab_datasets/CUHK-PEDES/processed_data/train.json]
+val_file: /mnt/data/lab_datasets/CUHK-PEDES/processed_data/val.json
+test_file: /mnt/data/lab_datasets/CUHK-PEDES/processed_data/test.json
+train_image_root: /mnt/data/lab_datasets/CUHK-PEDES/imgs
+val_image_root: /mnt/data/lab_datasets/CUHK-PEDES/imgs
+test_image_root: /mnt/data/lab_datasets/CUHK-PEDES/imgs
 
 bert_config: configs/config_bert.json
 
