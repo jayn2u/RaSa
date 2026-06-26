@@ -6,7 +6,7 @@ negative_model: gemma4:e4b
 negative_prompt: tripletclip_reid.yaml
 negative_annotation: auto
 ras_config: configs/PS_rstp_reid.yaml
-checkpoint: rasa_rstp_checkpoint.pth
+checkpoint: checkpoints/rasa_rstp_checkpoint.pth
 text_encoder: bert-base-uncased
 test_split: test
 batch_size: 64

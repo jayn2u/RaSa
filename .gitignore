@@ -150,3 +150,6 @@ wandb/
 .ruff_cache/
 
 *.pth
+*.tar.gz
+artifacts/
+checkpoints/
