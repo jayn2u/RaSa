@@ -1,9 +1,10 @@
-train_file:  ['/mnt/data/lab_datasets/ICFG-PEDES/processed_data/train.json']
-val_file: '/mnt/data/lab_datasets/ICFG-PEDES/processed_data/val.json'
-test_file: '/mnt/data/lab_datasets/ICFG-PEDES/processed_data/test.json'
-train_image_root: '/mnt/data/lab_datasets/ICFG-PEDES/imgs'
-val_image_root: '/mnt/data/lab_datasets/ICFG-PEDES/imgs'
-test_image_root: '/mnt/data/lab_datasets/ICFG-PEDES/imgs'
+env_file: env/.env
+train_file:  ['$env:DATASET_ROOT/ICFG-PEDES/processed_data/train.json']
+val_file: '$env:DATASET_ROOT/ICFG-PEDES/processed_data/val.json'
+test_file: '$env:DATASET_ROOT/ICFG-PEDES/processed_data/test.json'
+train_image_root: '$env:DATASET_ROOT/ICFG-PEDES/imgs'
+val_image_root: '$env:DATASET_ROOT/ICFG-PEDES/imgs'
+test_image_root: '$env:DATASET_ROOT/ICFG-PEDES/imgs'
 
 bert_config: 'configs/config_bert.json'
 

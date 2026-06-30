@@ -1,9 +1,10 @@
-train_file:  ['/mnt/data/lab_datasets/RSTPReid/processed_data/train.json']
-val_file: '/mnt/data/lab_datasets/RSTPReid/processed_data/val.json'
-test_file: '/mnt/data/lab_datasets/RSTPReid/processed_data/test.json'
-train_image_root: '/mnt/data/lab_datasets/RSTPReid/imgs'
-val_image_root: '/mnt/data/lab_datasets/RSTPReid/imgs'
-test_image_root: '/mnt/data/lab_datasets/RSTPReid/imgs'
+env_file: env/.env
+train_file:  ['$env:DATASET_ROOT/RSTPReid/processed_data/train.json']
+val_file: '$env:DATASET_ROOT/RSTPReid/processed_data/val.json'
+test_file: '$env:DATASET_ROOT/RSTPReid/processed_data/test.json'
+train_image_root: '$env:DATASET_ROOT/RSTPReid/imgs'
+val_image_root: '$env:DATASET_ROOT/RSTPReid/imgs'
+test_image_root: '$env:DATASET_ROOT/RSTPReid/imgs'
 
 bert_config: 'configs/config_bert.json'
 

@@ -1,9 +1,9 @@
 env_file: env/.env
 dataset: icfg-pedes
 dataset_root: ""
-negative_pedestrians_root: /mnt/data/negative-pedestrians/outputs
-negative_model: gemma4:e4b
-negative_prompt: tripletclip_reid.yaml
+negative_pedestrians_root: $env:NEGATIVE_REID_DATASET_PATH
+negative_model: gemma4:26b
+negative_prompt: tripletclip.yaml
 negative_annotation: auto
 ras_config: configs/PS_icfg_pedes.yaml
 checkpoint: checkpoints/rasa_icfg_checkpoint.pth

@@ -1,8 +1,10 @@
 import argparse
+import copy
 import datetime
 import json
 import os
 import random
+import re
 import time
 import numpy as np
 from ruamel.yaml import YAML
@@ -19,6 +21,56 @@ from models.tokenization_bert import BertTokenizer
 from models.vit import interpolate_pos_embed
 from optim import create_optimizer
 from scheduler import create_scheduler
+
+ENV_REF_RE = re.compile(r"\$env:([A-Za-z_][A-Za-z0-9_]*)")
+
+
+def read_env_file(env_file, config_path=None):
+    if not env_file:
+        return {}
+    env_path = Path(env_file).expanduser()
+    if not env_path.is_absolute():
+        candidates = [Path.cwd() / env_path]
+        if config_path is not None:
+            config_parent = Path(config_path).expanduser().resolve().parent
+            candidates.extend([config_parent / env_path, config_parent.parent / env_path])
+        env_path = next((candidate for candidate in candidates if candidate.is_file()), candidates[0])
+    if not env_path.is_file():
+        raise FileNotFoundError(f"env_file does not exist: {env_path}")
+
+    values = {}
+    for raw_line in env_path.read_text(encoding="utf-8").splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        values[key.strip()] = value.strip().strip('"').strip("'")
+    return values
+
+
+def resolve_env_refs(config, env_values):
+    def resolve_value(value):
+        if isinstance(value, str):
+            def replace(match):
+                key = match.group(1)
+                resolved = os.environ.get(key, env_values.get(key, "")).strip()
+                if not resolved:
+                    raise ValueError(f"Missing required environment variable: {key}")
+                return resolved
+
+            return ENV_REF_RE.sub(replace, value)
+        if isinstance(value, list):
+            for index, item in enumerate(value):
+                value[index] = resolve_value(item)
+            return value
+        if isinstance(value, dict):
+            for key in list(value.keys()):
+                value[key] = resolve_value(value[key])
+            return value
+        return value
+
+    return resolve_value(config)
+
 
 def train(model, data_loader, optimizer, tokenizer, epoch, warmup_steps, device, scheduler, config):
     # train
@@ -337,7 +389,10 @@ if __name__ == '__main__':
     yaml_loader = YAML(typ='rt')
     with open(args.config, 'r') as f:
         config = yaml_loader.load(f)
+    raw_config = copy.deepcopy(config)
+    env_values = read_env_file(config.get('env_file', ''), args.config)
+    config = resolve_env_refs(config, env_values)
     Path(args.output_dir).mkdir(parents=True, exist_ok=True)
     with open(os.path.join(args.output_dir, 'config.yaml'), 'w') as f:
-        yaml_loader.dump(config, f)
+        yaml_loader.dump(raw_config, f)
     main(args, config)

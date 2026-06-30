@@ -189,9 +189,23 @@ def _read_env_key(env_file: str | Path, key: str) -> str | None:
     return None
 
 
+def _resolve_env_ref(value: str, env_file: str | Path) -> str:
+    value = value.strip()
+    prefix = "$env:"
+    if not value.startswith(prefix):
+        return value
+    key = value[len(prefix):].strip()
+    if not key:
+        raise ValueError("Empty environment variable reference.")
+    resolved = _read_env_key(env_file, key)
+    if not resolved:
+        raise ValueError(f"Missing required environment variable: {key}")
+    return resolved
+
+
 def resolve_dataset_root(dataset_root: str, env_file: str) -> Path:
     if dataset_root.strip():
-        path = Path(dataset_root).expanduser()
+        path = Path(_resolve_env_ref(dataset_root, env_file)).expanduser()
         if path.exists():
             return path
         raise FileNotFoundError(f"dataset_root does not exist: {path}")
@@ -212,7 +226,10 @@ def resolve_negative_pedestrians_root(config: SimpleNamespace) -> Path:
         value = _read_env_key(config.env_file, "NEGATIVE_REID_DATASET_PATH")
         if value:
             return Path(value).expanduser()
-    return Path(config.negative_pedestrians_root).expanduser()
+    value = _resolve_env_ref(str(config.negative_pedestrians_root), config.env_file)
+    if not value:
+        raise ValueError("negative_pedestrians_root is empty and NEGATIVE_REID_DATASET_PATH is not set.")
+    return Path(value).expanduser()
 
 
 def resolve_negative_annotation_path(config: SimpleNamespace, dataset: str) -> Path:
