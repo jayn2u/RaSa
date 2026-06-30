@@ -147,13 +147,16 @@ def evaluation(model, data_loader, tokenizer, device, config):
     text_feats = torch.cat(text_feats, dim=0)
     text_atts = torch.cat(text_atts, dim=0)
     image_embeds = []
+    image_feats = []
     for image, img_id in data_loader:
         image = image.to(device)
         image_feat = model.visual_encoder(image)
         image_embed = F.normalize(model.vision_proj(image_feat[:, 0, :]), dim=-1)
         image_embeds.append(image_embed.cpu())
+        image_feats.append(image_feat.cpu())
         del image, image_feat, image_embed
     image_embeds = torch.cat(image_embeds, dim=0)
+    image_feats = torch.cat(image_feats, dim=0)
     sims_matrix = text_embeds @ image_embeds.t()
     del text_embeds
     score_matrix_t2i = torch.full((len(texts), len(eval_dataset.image)), -100.0)
@@ -165,8 +168,7 @@ def evaluation(model, data_loader, tokenizer, device, config):
     k_test = config['k_test']
     for i, sims in enumerate(metric_logger.log_every(sims_matrix[start:end], 50, header)):
         topk_sim, topk_idx = sims.topk(k=k_test, dim=0)
-        topk_images = torch.stack([eval_dataset[int(idx)][0] for idx in topk_idx.tolist()]).to(device)
-        encoder_output = model.visual_encoder(topk_images)
+        encoder_output = image_feats[topk_idx].to(device)
         text_idx = start + i
         text_feat = text_feats[text_idx:text_idx + 1].to(device)
         text_att = text_atts[text_idx:text_idx + 1].to(device)
@@ -181,7 +183,7 @@ def evaluation(model, data_loader, tokenizer, device, config):
         )
         score = model.itm_head(output.last_hidden_state[:, 0, :])[:, 1].cpu()
         score_matrix_t2i[text_idx, topk_idx] = score
-        del topk_images, encoder_output, output, score, text_feat, text_att
+        del encoder_output, output, score, text_feat, text_att
     if args.distributed:
         dist.barrier()
         score_matrix_t2i = score_matrix_t2i.to(device)
